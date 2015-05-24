@@ -200,7 +200,7 @@ class RendererImpl : public Renderer {
     class Map {
      public:
       // Maps part of the buffer object to memory.
-      Map(GLBuffer& _buffer, size_t _offset, size_t _size);
+      Map(GLBuffer& _buffer, size_t _size);
 
       // Unmaps from memory.
       ~Map();
@@ -213,7 +213,6 @@ class RendererImpl : public Renderer {
       void operator=(const Map&);
 
       GLBuffer& buffer_;
-      size_t offset_;
       size_t size_;
       void* data_;
     };
@@ -316,9 +315,10 @@ extern PFNGLVERTEXATTRIB4FVPROC glVertexAttrib4fv;
 extern PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 #endif  // OZZ_GL_VERSION_2_0_EXT
 
+extern PFNGLMAPBUFFERRANGEPROC glMapBufferRange;
+
 // OpenGL ARB_instanced_arrays extension, optional.
-#undef GL_ARB_instanced_arrays
-extern bool GL_ARB_instanced_arrays;
+extern bool GL_ARB_instanced_arrays_available;
 extern PFNGLVERTEXATTRIBDIVISORARBPROC glVertexAttribDivisorARB;
 extern PFNGLDRAWARRAYSINSTANCEDARBPROC glDrawArraysInstancedARB;
 extern PFNGLDRAWELEMENTSINSTANCEDARBPROC glDrawElementsInstancedARB;
