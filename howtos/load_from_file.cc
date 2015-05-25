@@ -28,7 +28,6 @@
 //                                                                            //
 //============================================================================//
 
-// Provides logging functionnalities.
 #include "ozz/base/log.h"
 
 // Provides files abstraction.
@@ -118,4 +117,3 @@ int main(int argc, char const *argv[]) {
 
   return EXIT_SUCCESS;
 }
-
