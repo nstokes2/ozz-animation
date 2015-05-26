@@ -5,7 +5,7 @@
 //                                                                            //
 //----------------------------------------------------------------------------//
 //                                                                            //
-// Copyright (c) 2012-2014 Guillaume Blanc                                    //
+// Copyright (c) 2012-2015 Guillaume Blanc                                    //
 //                                                                            //
 // This software is provided 'as-is', without any express or implied          //
 // warranty. In no event will the authors be held liable for any damages      //
@@ -126,6 +126,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
     layers[0].transform = samplers_[kMainAnimation].locals;
     layers[0].weight = samplers_[kMainAnimation].weight_setting;
 
+    // Prepares additive blending layers.
     ozz::animation::BlendingJob::Layer additive_layers[1];
     additive_layers[0].transform = samplers_[kAdditiveAnimation].locals;
     additive_layers[0].weight = samplers_[kAdditiveAnimation].weight_setting;
@@ -148,7 +149,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
       return false;
     }
 
-    // Gets the ouput of the blending stage, and converts it to model space.
+    // Gets the output of the blending stage, and converts it to model space.
 
     // Setup local-to-model conversion job.
     ozz::animation::LocalToModelJob ltm_job;
