@@ -89,8 +89,8 @@ RendererImpl::RendererImpl(Camera* _camera)
     : camera_(_camera),
       max_skeleton_pieces_(animation::Skeleton::kMaxJoints * 2),
       prealloc_uniforms_(NULL),
-      dynamic_array_vbo_(GL_ARRAY_BUFFER),
-      dynamic_index_vbo_(GL_ELEMENT_ARRAY_BUFFER),
+      dynamic_array_bo_(GL_ARRAY_BUFFER),
+      dynamic_index_bo_(GL_ELEMENT_ARRAY_BUFFER),
       immediate_(NULL),
       mesh_shader_(NULL) {
   prealloc_uniforms_ = reinterpret_cast<float*>(
@@ -462,9 +462,9 @@ void RendererImpl::DrawPosture_Impl(const ozz::math::Float4x4& _transform,
 void RendererImpl::DrawPosture_InstancedImpl(const ozz::math::Float4x4& _transform,
                                              int _instance_count,
                                              bool _draw_joints) {
-  // Updates dynamic_array_vbo_ with instanced matrices.
+  // Updates dynamic_array_bo_ with instanced matrices.
   const size_t vbo_size = _instance_count * 16 * sizeof(float);
-  dynamic_array_vbo_.Resize(vbo_size, prealloc_uniforms_);
+  BufferObject::Update update_vbo(dynamic_array_bo_, vbo_size, prealloc_uniforms_);
 
   // Renders models.
   for (int i = 0; i < (_draw_joints ? 2 : 1); ++i) {
@@ -483,7 +483,7 @@ void RendererImpl::DrawPosture_InstancedImpl(const ozz::math::Float4x4& _transfo
 
     // Setup instanced GL context.
     const GLint joint_attrib = model.shader->joint_instanced_attrib();
-    GL(BindBuffer(GL_ARRAY_BUFFER, dynamic_array_vbo_.id()));
+    GL(BindBuffer(GL_ARRAY_BUFFER, dynamic_array_bo_.id()));
     GL(EnableVertexAttribArray(joint_attrib + 0));
     GL(EnableVertexAttribArray(joint_attrib + 1));
     GL(EnableVertexAttribArray(joint_attrib + 2));
@@ -673,67 +673,70 @@ bool RendererImpl::DrawMesh(const Mesh& _mesh,
 
   // Reallocate vertex buffer.
   const GLsizei vbo_size = positions_size + normals_size + colors_size;
-  dynamic_array_vbo_.Resize(vbo_size, NULL);
 
-  // Iterate mesh parts and fills vbo.
-  size_t vertex_offset = 0;
-  for (size_t i = 0; i < _mesh.parts.size(); ++i) {
-    const Mesh::Part& part = _mesh.parts[i];
-    const size_t part_vertex_count = part.positions.size() / 3;
+  {
+    BufferObject::Update update_vbo(dynamic_array_bo_, vbo_size, NULL);
 
-    // Handles positions.
-    dynamic_array_vbo_.Copy(positions_offset + vertex_offset * positions_stride,
-                            part_vertex_count * positions_stride,
-                            array_begin(part.positions));
+    // Iterate mesh parts and fills vbo.
+    size_t vertex_offset = 0;
+    for (size_t i = 0; i < _mesh.parts.size(); ++i) {
+      const Mesh::Part& part = _mesh.parts[i];
+      const size_t part_vertex_count = part.positions.size() / 3;
 
-    // Handles normals.
-    const size_t part_normal_count = part.normals.size() / 3;
-    if (part_vertex_count == part_normal_count) {
-      // Optimal path used when the right number of normals is provided.
-      dynamic_array_vbo_.Copy(normals_offset + vertex_offset * normals_stride,
-                              part_normal_count * normals_stride,
-                              array_begin(part.normals));
-    } else {
-      // Un-optimal path used when the right number of normals is not provided.
-      OZZ_STATIC_ASSERT(sizeof(kDefaultNormalArray[0]) == normals_stride);
-      for (size_t j = 0;
-           j < part_vertex_count;
-           j += OZZ_ARRAY_SIZE(kDefaultNormalArray)) {
-        const size_t this_loop_count =
-          math::Min(OZZ_ARRAY_SIZE(kDefaultNormalArray), part_vertex_count - j);
-        dynamic_array_vbo_.Copy(normals_offset + (vertex_offset + j) * normals_stride,
-                                normals_stride * this_loop_count,
-                                kDefaultNormalArray);
+      // Handles positions.
+      update_vbo.SubData(positions_offset + vertex_offset * positions_stride,
+                         part_vertex_count * positions_stride,
+                         array_begin(part.positions));
+
+      // Handles normals.
+      const size_t part_normal_count = part.normals.size() / 3;
+      if (part_vertex_count == part_normal_count) {
+        // Optimal path used when the right number of normals is provided.
+        update_vbo.SubData(normals_offset + vertex_offset * normals_stride,
+                           part_normal_count * normals_stride,
+                           array_begin(part.normals));
+      } else {
+        // Un-optimal path used when the right number of normals is not provided.
+        OZZ_STATIC_ASSERT(sizeof(kDefaultNormalArray[0]) == normals_stride);
+        for (size_t j = 0;
+             j < part_vertex_count;
+             j += OZZ_ARRAY_SIZE(kDefaultNormalArray)) {
+          const size_t this_loop_count =
+            math::Min(OZZ_ARRAY_SIZE(kDefaultNormalArray), part_vertex_count - j);
+          update_vbo.SubData(normals_offset + (vertex_offset + j) * normals_stride,
+                             normals_stride * this_loop_count,
+                             kDefaultNormalArray);
+        }
       }
-    }
 
-    // Handles colors.
-    const size_t part_color_count = part.colors.size() / 4;
-    if (part_vertex_count == part_color_count) {
-      // Optimal path used when the right number of colors is provided.
-      dynamic_array_vbo_.Copy(colors_offset + vertex_offset * colors_stride,
-                              part_color_count * colors_stride,
-                              array_begin(part.colors));
-    } else {
-      // Un-optimal path used when the right number of colors is not provided.
-      OZZ_STATIC_ASSERT(sizeof(kDefaultColorArray[0]) == colors_stride);
-      for (size_t j = 0;
-           j < part_vertex_count;
-           j += OZZ_ARRAY_SIZE(kDefaultColorArray)) {
-        const size_t this_loop_count =
-          math::Min(OZZ_ARRAY_SIZE(kDefaultColorArray), part_vertex_count - j);
-        dynamic_array_vbo_.Copy(colors_offset + (vertex_offset + j) * colors_stride,
-                               colors_stride * this_loop_count,
-                               kDefaultColorArray);
+      // Handles colors.
+      const size_t part_color_count = part.colors.size() / 4;
+      if (part_vertex_count == part_color_count) {
+        // Optimal path used when the right number of colors is provided.
+        update_vbo.SubData(colors_offset + vertex_offset * colors_stride,
+                           part_color_count * colors_stride,
+                           array_begin(part.colors));
+      } else {
+        // Un-optimal path used when the right number of colors is not provided.
+        OZZ_STATIC_ASSERT(sizeof(kDefaultColorArray[0]) == colors_stride);
+        for (size_t j = 0;
+             j < part_vertex_count;
+             j += OZZ_ARRAY_SIZE(kDefaultColorArray)) {
+          const size_t this_loop_count =
+            math::Min(OZZ_ARRAY_SIZE(kDefaultColorArray), part_vertex_count - j);
+          update_vbo.SubData(colors_offset + (vertex_offset + j) * colors_stride,
+                             colors_stride * this_loop_count,
+                             kDefaultColorArray);
+        }
       }
-    }
 
-    // Computes next loop offset.
-    vertex_offset += part_vertex_count;
+      // Computes next loop offset.
+      vertex_offset += part_vertex_count;
+    }
   }
   
   // Binds shader with this array buffer.
-  GL(BindBuffer(GL_ARRAY_BUFFER, dynamic_array_vbo_.id()));
+  GL(BindBuffer(GL_ARRAY_BUFFER, dynamic_array_bo_.id()));
   mesh_shader_->Bind(_transform,
                      camera()->view_proj(),
                      positions_stride, positions_offset,
@@ -743,11 +746,12 @@ bool RendererImpl::DrawMesh(const Mesh& _mesh,
 
   // Updates dynamic index buffer.
   const Mesh::TriangleIndices& indices = _mesh.triangle_indices;
-  dynamic_index_vbo_.Resize(indices.size() * sizeof(Mesh::TriangleIndices::value_type),
-                            array_begin(indices));
+  BufferObject::Update update_ibo(dynamic_index_bo_,
+                                  indices.size() * sizeof(Mesh::TriangleIndices::value_type),
+                                  array_begin(indices));
 
   // Draws the mesh.
-  GL(BindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_index_vbo_.id()));
+  GL(BindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_index_bo_.id()));
   OZZ_STATIC_ASSERT(sizeof(Mesh::TriangleIndices::value_type) == 2);
   GL(DrawElements(GL_TRIANGLES,
                   static_cast<GLsizei>(indices.size()),
@@ -782,11 +786,10 @@ bool RendererImpl::DrawSkinnedMesh(const Mesh& _mesh,
 
   // Reallocate vertex buffer.
   const GLsizei vbo_size = skinned_data_size + colors_size;
-  dynamic_array_vbo_.Resize(vbo_size, NULL);
 
   {
-    // Map dynamic buffer to memory.
-    GLBuffer::Map map_buffer(dynamic_array_vbo_, vbo_size);
+    // Resizes dynamic buffer to memory.
+    BufferObject::Map map_buffer(dynamic_array_bo_, vbo_size);
 
     // Iterate mesh parts and fills vbo.
     // Runs a skinning job per mesh part. Triangle indices are shared
@@ -796,7 +799,7 @@ bool RendererImpl::DrawSkinnedMesh(const Mesh& _mesh,
       const ozz::sample::Mesh::Part& part = _mesh.parts[i];
 
       // Skip this iteration if no vertex.
-      const size_t part_vertex_count = part.positions.size() / 3;
+      const int part_vertex_count = static_cast<int>(part.positions.size()) / 3;
       if (part_vertex_count == 0) {
         continue;
       }
@@ -869,20 +872,23 @@ bool RendererImpl::DrawSkinnedMesh(const Mesh& _mesh,
       }
 
       // Handles colors which aren't affected by skinning.
-      if (part_vertex_count == part.colors.size() / 4) {
+      if (part_vertex_count == static_cast<int>(part.colors.size()) / 4) {
         // Optimal path used when the right number of colors is provided.
-        memcpy(ozz::PointerStride(map_buffer.data(), colors_offset + processed_vertex_count * colors_stride),
-               ozz::PointerStride(array_begin(part.colors), colors_offset + processed_vertex_count * colors_stride),
+        memcpy(ozz::PointerStride(map_buffer.data(),
+                                  colors_offset + processed_vertex_count * colors_stride),
+               ozz::PointerStride(array_begin(part.colors),
+                                  colors_offset + processed_vertex_count * colors_stride),
                part_vertex_count * colors_stride);
       } else {
         // Un-optimal path used when the right number of colors is not provided.
         OZZ_STATIC_ASSERT(sizeof(kDefaultColorArray[0]) == colors_stride);
-        for (size_t j = 0;
+        for (int j = 0;
              j < part_vertex_count;
              j += OZZ_ARRAY_SIZE(kDefaultColorArray)) {
           const size_t this_loop_count =
-            math::Min(OZZ_ARRAY_SIZE(kDefaultColorArray), part_vertex_count - j);
-          memcpy(ozz::PointerStride(map_buffer.data(), colors_offset + (processed_vertex_count + j) * colors_stride),
+            math::Min(static_cast<int>(OZZ_ARRAY_SIZE(kDefaultColorArray)), part_vertex_count - j);
+          memcpy(ozz::PointerStride(map_buffer.data(),
+                                    colors_offset + (processed_vertex_count + j) * colors_stride),
                  kDefaultColorArray,
                  colors_stride * this_loop_count);
         }
@@ -894,7 +900,7 @@ bool RendererImpl::DrawSkinnedMesh(const Mesh& _mesh,
   }
 
   // Binds shader with this array buffer.
-  GL(BindBuffer(GL_ARRAY_BUFFER, dynamic_array_vbo_.id()));
+  GL(BindBuffer(GL_ARRAY_BUFFER, dynamic_array_bo_.id()));
   mesh_shader_->Bind(_transform,
                      camera()->view_proj(),
                      positions_stride, positions_offset,
@@ -904,11 +910,12 @@ bool RendererImpl::DrawSkinnedMesh(const Mesh& _mesh,
 
   // Updates dynamic index buffer.
   const Mesh::TriangleIndices& indices = _mesh.triangle_indices;
-  dynamic_index_vbo_.Resize(indices.size() * sizeof(Mesh::TriangleIndices::value_type),
-                            array_begin(indices));
+  BufferObject::Update update_ibo(dynamic_index_bo_,
+                                  indices.size() * sizeof(Mesh::TriangleIndices::value_type),
+                                  array_begin(indices));
 
   // Draws the mesh.
-  GL(BindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_index_vbo_.id()));
+  GL(BindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_index_bo_.id()));
   OZZ_STATIC_ASSERT(sizeof(Mesh::TriangleIndices::value_type) == 2);
   GL(DrawElements(GL_TRIANGLES,
                   static_cast<GLsizei>(indices.size()),
@@ -1046,14 +1053,14 @@ bool RendererImpl::InitOpenGLExtensions() {
   return true;
 }
 
-RendererImpl::GLBuffer::GLBuffer(GLenum _target)
+RendererImpl::BufferObject::BufferObject(GLenum _target)
   : target_(_target),
     id_(0),
     data_(NULL),
     size_(0) {
 }
 
-RendererImpl::GLBuffer::~GLBuffer() {
+RendererImpl::BufferObject::~BufferObject() {
   if(id_) {
     GL(DeleteBuffers(1, &id_));
     id_ = 0;
@@ -1062,17 +1069,7 @@ RendererImpl::GLBuffer::~GLBuffer() {
   data_ = NULL;
 }
 
-void RendererImpl::GLBuffer::Copy(size_t _offset, size_t _size, const void* _data) {
-  assert(_offset + _size <= size_ && "GL buffer is too small. Call Resize.");
-  assert(_data && "Data must not be NULL");
-
-  // Binds the dynamic buffer and update it.
-  GL(BindBuffer(target_, id_));
-  GL(BufferSubData(target_, _offset, _size, _data));
-  GL(BindBuffer(target_, 0));
-}
-
-void RendererImpl::GLBuffer::Resize(size_t _size, const void* _data) {
+void RendererImpl::BufferObject::Resize(size_t _size, const void* _data) {
 
   // Generate buffer if it's the first use.
   if (!id_) {
@@ -1082,9 +1079,9 @@ void RendererImpl::GLBuffer::Resize(size_t _size, const void* _data) {
   GL(BindBuffer(target_, id_));
 
   // Resize if it's too small.
-  /*if (_size > size_)*/ {
+  if (_size > size_) {
     // Reallocate mapped data.
-    size_ = _size;// ozz::math::Max(size_ * 2, _size);
+    size_ = ozz::math::Max(size_ * 2, _size);
 
     // Allocate client size memory in case glMapBufferRange isn't available.
     if (!glMapBufferRange) {
@@ -1103,12 +1100,35 @@ void RendererImpl::GLBuffer::Resize(size_t _size, const void* _data) {
   GL(BindBuffer(target_, 0));
 }
 
-RendererImpl::GLBuffer::Map::Map(GLBuffer& _buffer, size_t _size)
+RendererImpl::BufferObject::Update::Update(BufferObject& _buffer,
+                                           size_t _size,
+                                           const void* _data)
+    : buffer_(_buffer) {
+  buffer_.Resize(_size, _data);
+}
+
+RendererImpl::BufferObject::Update::~Update() {
+}
+
+void RendererImpl::BufferObject::Update::SubData(size_t _offset,
+                                                 size_t _size,
+                                                 const void* _data) {
+  assert(_offset + _size <= buffer_.size_ && "GL buffer is too small. Call Resize.");
+  assert(_data && "Data must not be NULL");
+
+  // Binds the dynamic buffer and update it.
+  GL(BindBuffer(buffer_.target_, buffer_.id_));
+  GL(BufferSubData(buffer_.target_, _offset, _size, _data));
+  GL(BindBuffer(buffer_.target_, 0));
+}
+
+RendererImpl::BufferObject::Map::Map(BufferObject& _buffer, size_t _size)
     : buffer_(_buffer),
       size_(_size),
       data_(NULL) {
-  assert(_size <= _buffer.size_);
+  buffer_.Resize(_size, NULL);
 
+  // Map the buffer object if glMapBufferRange is available.
   if (glMapBufferRange) {
     GL(BindBuffer(buffer_.target_, buffer_.id_));
     data_ = glMapBufferRange(buffer_.target_,
@@ -1121,13 +1141,13 @@ RendererImpl::GLBuffer::Map::Map(GLBuffer& _buffer, size_t _size)
   }
 }
 
-RendererImpl::GLBuffer::Map::~Map() {
+RendererImpl::BufferObject::Map::~Map() {
   GL(BindBuffer(buffer_.target_, buffer_.id_));
   if (glMapBufferRange) {
     // Unmaps buffer.
     GL(UnmapBuffer(buffer_.target_));
   } else {
-    // Copy memory to buffer.
+    // Copy memory content to the buffer object.
     GL(BufferSubData(buffer_.target_, 0, size_, buffer_.data_));
   }
   GL(BindBuffer(buffer_.target_, 0));

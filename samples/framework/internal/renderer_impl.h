@@ -173,22 +173,14 @@ class RendererImpl : public Renderer {
   Model models_[2];
 
   // Dynamic GL buffer object abstraction.
-  class GLBuffer {
+  class BufferObject {
    public:
-    // Initialize a buffer for a target GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER...
-    GLBuffer(GLenum _target);
+    // Initialize a buffer for a target GL_ARRAY_BUFFER,
+    // GL_ELEMENT_ARRAY_BUFFER...
+    BufferObject(GLenum _target);
 
     // Deallocate buffer object.
-    ~GLBuffer();
-
-    // Resizes a buffer object. This function must always be called before
-    // mapping or copying to the buffer.
-    // If _data is not NULL, the content of data is used to initialize buffer
-    // content. Otherwise, all the content is discarded.
-    void Resize(size_t _size, const void* _data);
-
-    // Copy the content of data to the buffer object.
-    void Copy(size_t _offset, size_t _size, const void* _data);
+    ~BufferObject();
 
     // Get GL buffer object id.
     GLuint id() const {
@@ -196,11 +188,35 @@ class RendererImpl : public Renderer {
       return id_;
     }
 
+    // Updates buffer object size and data. Allows to update a sub part of the
+    // buffer.
+    class Update {
+     public:
+      // Resizes the buffer.
+      // If _data is not NULL, the content of data is used to initialize buffer
+      // content. Otherwise, all the content is discarded.
+      Update(BufferObject& _buffer, size_t _size, const void* _data);
+
+      ~Update();
+
+      // Update a sub part of the buffer.
+      // _data must not be NULL.
+      void SubData(size_t _offset, size_t _size, const void* _data);
+
+     private:
+      // Disallow copy and assignment.
+      Update(const Update&);
+      void operator=(const Update&);
+
+      BufferObject& buffer_;
+    };
+
     // Map vertex object to memory. Mapped address can be obtained with data().
+    // Mapping a buffer object resizes it and clears the buffer.
     class Map {
      public:
       // Maps part of the buffer object to memory.
-      Map(GLBuffer& _buffer, size_t _size);
+      Map(BufferObject& _buffer, size_t _size);
 
       // Unmaps from memory.
       ~Map();
@@ -209,26 +225,33 @@ class RendererImpl : public Renderer {
       void* data() { return data_; }
 
      private:
+      // Disallow copy and assignment.
       Map(const Map&);
       void operator=(const Map&);
 
-      GLBuffer& buffer_;
+      BufferObject& buffer_;
       size_t size_;
       void* data_;
     };
 
   private:
+
+    // Resizes a buffer object.
+    // If _data is not NULL, the content of data is used to initialize buffer
+    // content. Otherwise, all the content is discarded.
+    void Resize(size_t _size, const void* _data);
+
     GLenum target_;
     GLuint id_;
     void* data_;
     size_t size_;
   };
 
-  // Dynamic vbo used for arrays.
-  GLBuffer dynamic_array_vbo_;
+  // Dynamic buffer object used for arrays.
+  BufferObject dynamic_array_bo_;
 
-  // Dynamic vbo used for indices.
-  GLBuffer dynamic_index_vbo_;
+  // Dynamic buffer object used for indices.
+  BufferObject dynamic_index_bo_;
 
   // Immediate renderer implementation.
   GlImmediateRenderer* immediate_;
