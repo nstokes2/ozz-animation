@@ -1025,8 +1025,16 @@ bool RendererImpl::InitOpenGLExtensions() {
       std::endl;
   }
 
-  success = true;
-  OZZ_INIT_GL_EXT(glMapBufferRange, PFNGLMAPBUFFERRANGEPROC, success);
+#ifdef OZZ_GL_VERSION_3_0_EXT
+  bool buffer_range_available = true;
+  OZZ_INIT_GL_EXT(glMapBufferRange, PFNGLMAPBUFFERRANGEPROC, buffer_range_available);
+  OZZ_INIT_GL_EXT(glFlushMappedBufferRange, PFNGLFLUSHMAPPEDBUFFERRANGEPROC, buffer_range_available);
+  if (buffer_range_available) {
+    log::Log() << "Optional glMapBufferRange extensions found." << std::endl;
+  } else {
+    log::Log() << "Optional glMapBufferRange extensions not found." << std::endl;
+  }
+#endif  // OZZ_GL_VERSION_3_0_EXT
 
   GL_ARB_instanced_arrays_available = 
     glfwExtensionSupported("GL_ARB_instanced_arrays") != 0;
@@ -1232,7 +1240,10 @@ OZZ_DECL_GL_EXT(glVertexAttrib4fv, PFNGLVERTEXATTRIB4FVPROC);
 OZZ_DECL_GL_EXT(glVertexAttribPointer, PFNGLVERTEXATTRIBPOINTERPROC);
 #endif  // OZZ_GL_VERSION_2_0_EXT
 
+#ifdef OZZ_GL_VERSION_3_0_EXT
 OZZ_DECL_GL_EXT(glMapBufferRange, PFNGLMAPBUFFERRANGEPROC);
+OZZ_DECL_GL_EXT(glFlushMappedBufferRange, PFNGLFLUSHMAPPEDBUFFERRANGEPROC);
+#endif  // OZZ_GL_VERSION_3_0_EXT
 
 bool GL_ARB_instanced_arrays_available = false;
 OZZ_DECL_GL_EXT(glVertexAttribDivisorARB, PFNGLVERTEXATTRIBDIVISORARBPROC);

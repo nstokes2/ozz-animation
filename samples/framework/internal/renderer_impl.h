@@ -51,6 +51,9 @@
 #ifndef GL_VERSION_2_0
 #define OZZ_GL_VERSION_2_0_EXT
 #endif  // GL_VERSION_2_0
+#ifndef GL_VERSION_3_0
+#define OZZ_GL_VERSION_3_0_EXT
+#endif  // GL_VERSION_3_0
 
 #include "GL/glext.h"
 
@@ -338,7 +341,11 @@ extern PFNGLVERTEXATTRIB4FVPROC glVertexAttrib4fv;
 extern PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 #endif  // OZZ_GL_VERSION_2_0_EXT
 
+// OpenGL 3.0 buffer management functions, optional.
+#ifdef OZZ_GL_VERSION_3_0_EXT
 extern PFNGLMAPBUFFERRANGEPROC glMapBufferRange;
+extern PFNGLFLUSHMAPPEDBUFFERRANGEPROC glFlushMappedBufferRange;
+#endif  // OZZ_GL_VERSION_3_0_EXT
 
 // OpenGL ARB_instanced_arrays extension, optional.
 extern bool GL_ARB_instanced_arrays_available;
